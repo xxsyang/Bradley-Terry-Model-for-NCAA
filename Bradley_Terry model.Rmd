@@ -1,0 +1,141 @@
+---
+title: "Paper 3 Appendix 2"
+author: "Xiangsen Yang"
+date: "4/23/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Packages required
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(brglm)
+library(arm)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(dplyr)
+library(multcomp)
+```
+# Data 
+```{r eval=FALSE, include=TRUE}
+cbb <- read.csv("http://stat.lsa.umich.edu/~bbh/s485/data/cbb-mens-2022-03-27.csv")
+cbb$Date <- as.Date(cbb$Date)
+```
+# Fit a plain-vanilla Bradley-Terry model, taking Villanova as reference team
+```{r eval=FALSE, include=TRUE}
+#Without home-field advantage
+#Villanova as reference team
+bt_1 <- glm(formula = Home_Win ~ . -Date - Villanova - 1, family = binomial, data = cbb) 
+```
+# Penalized Logistic Regression, taking Villanova as reference team
+```{r eval=FALSE, include=TRUE}
+pen_1 <- arm::bayesglm(formula = Home_Win ~ . -Date - Villanova - 1, family = binomial, data = cbb) 
+```
+
+
+# Accounting for game location and season, taking Villanova as reference team
+```{r eval=FALSE, include=TRUE}
+
+#Plain-Vanilla"model:
+bt_2 <- glm(formula = Home_Win ~ .-Date - Villanova - 1  
+                      + I(Date >= as.Date("2022-01-01"))
+                      , family = binomial, data = cbb)
+
+#Penalized model:
+pen_2 <- arm::bayesglm(formula = Home_Win ~ . -Date - Villanova - 1
+                      + I(Date >= as.Date("2022-01-01"))
+                      , family = binomial, data = cbb)
+```
+
+# Assessing Each Model
+Evaluating each model with in-sample MSE, cross-validation, and likelihood ratio tests to evaluate quality of adding an intercept to our models.
+
+```{r eval=FALSE, include=TRUE}
+#MSEs
+#in-sample
+(predict(bt_1, data = cbb) - cbb$Home_Win)^2 %>% mean
+(predict(pen_1, data = cbb) - cbb$Home_Win)^2 %>% mean
+(predict(bt_2, data = cbb) - cbb$Home_Win)^2 %>% mean
+(predict(pen_2, data = cbb) - cbb$Home_Win)^2 %>% mean
+```
+
+```{r eval=FALSE, include=TRUE}
+# cross validation, we choose 5-fold
+folds <- sample(rep(1:5, length.out = nrow(cbb))) # n-fold cross-validation
+
+bt_1_cv_mses <- 1:5
+pen_1_cv_mses <- 1:5
+bt_2_cv_mses <- 1:5
+pen_2_cv_mses <- 1:5
+
+
+for (fold in 1:5) {
+  test.rows <- which(folds == fold)
+  train <- cbb[-test.rows,]
+  test <- cbb[test.rows,]
+  bt_1_cv <- glm(formula = Home_Win ~ . -Date -Villanova -1, family = binomial, data = train)
+  pen_1_cv <- arm::bayesglm(formula = Home_Win ~ . -Date -Villanova -1, family = binomial, data = train) 
+
+  bt_2_cv <- glm(formula = Home_Win ~ . -Villanova
+                      + I(Date >= as.Date("2022-01-01"))
+                      , family = binomial, data = train) 
+  
+  pen_2_cv <- arm::bayesglm(formula = Home_Win ~ .   -Villanova
+                      + I(Date >= as.Date("2022-01-01"))
+                      , family = binomial, data = train) 
+  
+  
+#MSEs for 5-fold
+  bt_1_cv_mses[fold] <- (predict(bt_1, data = test) - test$Home_Win)^2 %>% mean
+  pen_1_cv_mses[fold] <- (predict(pen_1, data = test) - test$Home_Win)^2 %>% mean
+  bt_2_cv_mses[fold] <- (predict(bt_2, data = test) - test$Home_Win)^2 %>% mean
+  pen_2_cv_mses[fold] <- (predict(pen_2, data = test) - test$Home_Win)^2 %>% mean
+  
+  
+}
+```
+
+
+```{r eval=FALSE, include=TRUE}
+#CV MSEs
+mean(bt_1_cv_mses) 
+mean(pen_1_cv_mses) 
+mean(bt_2_cv_mses) 
+mean(pen_2_cv_mses)
+```
+
+```{r eval=FALSE, include=TRUE}
+#Likelihood Ratio Tests
+anova(bt_1, bt_2, test ="LRT") # is including the intercept and the course of season a significantly better model? - Likelihood Ratio Test
+anova(pen_1, pen_2, test ="LRT") # is including the intercept and the course of season a significantly better model? - Likelihood Ratio Test
+```
+
+
+# Rankings by using preferred model
+Rankings will be based on coefficients
+```{r eval=FALSE, include=TRUE}
+# Top 10
+pen_2$coefficients %>% sort(decreasing = T) %>% .[1:10]
+# Bottom 5
+pen_2$coefficients %>% sort %>% .[1:5]
+
+```
+
+# Difference of Fitted Ability Coefficients
+Calculating the confidence interval of each difference in team coefficients
+```{r eval=FALSE, include=TRUE}
+coef(pen_2)[c("Kansas", "North.Carolina")]
+coef(pen_2)[c("Kansas", "Duke")]
+glht(pen_2, linfct = c("Kansas - North.Carolina >= 0")) %>% confint()
+glht(pen_2, linfct = c("Kansas - Duke >= 0")) %>% confint()
+
+```
+
+
+
+
+
+
+
+
